@@ -1,0 +1,82 @@
+[
+  {
+    "display_name": "Camila Ríos",
+    "region": "Lima",
+    "education_level": "universitario",
+    "skills": "python, sql, comunicación, trabajo en equipo",
+    "interests": "datos, empleo júnior, aprender en la práctica",
+    "availability": "tiempo_completo",
+    "goal": "empleo",
+    "summary": "Egresada de ingeniería, busca primer trabajo en análisis de datos."
+  },
+  {
+    "display_name": "Diego Quispe",
+    "region": "Arequipa",
+    "education_level": "tecnico",
+    "skills": "excel, atención al cliente, organización",
+    "interests": "operaciones, retail, medio tiempo",
+    "availability": "medio_tiempo",
+    "goal": "empleo",
+    "summary": "Técnico administrativo con experiencia en mostrador y inventarios."
+  },
+  {
+    "display_name": "Lucía Fernández",
+    "region": "Lima",
+    "education_level": "secundaria",
+    "skills": "redes sociales, canva, redacción",
+    "interests": "marketing, voluntariado, causas sociales",
+    "availability": "fines_de_semana",
+    "goal": "voluntariado",
+    "summary": "Quiere aportar en marketing digital para ONGs juveniles."
+  },
+  {
+    "display_name": "Marcos Salas",
+    "region": "Remoto",
+    "education_level": "universitario",
+    "skills": "javascript, react, git, inglés intermedio",
+    "interests": "desarrollo web, startups, open source",
+    "availability": "tiempo_completo",
+    "goal": "empleo",
+    "summary": "Desarrollador frontend autodidacta con proyectos personales en GitHub."
+  },
+  {
+    "display_name": "Ana Torres",
+    "region": "Cusco",
+    "education_level": "universitario",
+    "skills": "matemática, pedagogía, trabajo en grupo",
+    "interests": "educación, voluntariado, stem",
+    "availability": "fines_de_semana",
+    "goal": "voluntariado",
+    "summary": "Estudiante de educación, busca voluntariado enseñanza STEM."
+  },
+  {
+    "display_name": "Pedro Huamán",
+    "region": "Lima",
+    "education_level": "tecnico",
+    "skills": "pruebas software, documentación, atención al detalle",
+    "interests": "calidad, qa, tecnología",
+    "availability": "tiempo_completo",
+    "goal": "empleo",
+    "summary": "Técnico en sistemas enfocado en pruebas manuales y regresión."
+  },
+  {
+    "display_name": "Valeria Soto",
+    "region": "Remoto",
+    "education_level": "universitario",
+    "skills": "figma, ux research, prototipado",
+    "interests": "diseño de producto, accesibilidad",
+    "availability": "medio_tiempo",
+    "goal": "curso",
+    "summary": "Quiere formalizar conocimientos en UX con curso estructurado."
+  },
+  {
+    "display_name": "Jorge Mendoza",
+    "region": "Lima",
+    "education_level": "secundaria",
+    "skills": "logística, eventos, trabajo bajo presión",
+    "interests": "producción de eventos, voluntariado",
+    "availability": "fines_de_semana",
+    "goal": "voluntariado",
+    "summary": "Apoya en logística de ferias escolares y eventos comunitarios."
+  }
+]

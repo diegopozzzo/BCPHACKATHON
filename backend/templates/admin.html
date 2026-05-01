@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>RutaPe — Admin</title>
+  <style>
+    :root{
+      --bg: #0c1117;
+      --panel: #111826;
+      --panel2:#0f1724;
+      --text: #e7ecf3;
+      --muted: #93a4bf;
+      --line: rgba(168, 186, 214, .12);
+      --accent: #5aa2ff;
+      --good:#63d6a9;
+      --warn:#ffcc66;
+      --shadow: 0 12px 30px rgba(0,0,0,.35);
+    }
+    *{ box-sizing:border-box; }
+    body{
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, "Apple Color Emoji","Segoe UI Emoji";
+      background: radial-gradient(1200px 700px at 12% 10%, rgba(90,162,255,.12), transparent 60%), var(--bg);
+      color: var(--text);
+      margin: 0;
+      padding: 18px;
+    }
+    header{
+      display:flex;
+      align-items:flex-end;
+      justify-content:space-between;
+      gap:16px;
+      margin: 4px 0 14px;
+    }
+    h1{
+      margin:0;
+      font-size: 20px;
+      letter-spacing: -.02em;
+      line-height: 1.15;
+      text-wrap: balance;
+    }
+    .sub{
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.35;
+      max-width: 80ch;
+    }
+    .actions{
+      display:flex;
+      gap:10px;
+      align-items:center;
+      flex-wrap:wrap;
+      justify-content:flex-end;
+    }
+    .actions input{
+      background: rgba(12,17,23,.35);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      color: var(--text);
+      padding: 10px 12px;
+      min-width: 340px;
+      outline: none;
+    }
+    .actions input:focus{ border-color: rgba(90,162,255,.55); box-shadow: 0 0 0 3px rgba(90,162,255,.18); }
+    .btn{
+      border: 1px solid rgba(90,162,255,.55);
+      background: linear-gradient(180deg, rgba(90,162,255,.95), rgba(90,162,255,.72));
+      color: #06111f;
+      font-weight: 700;
+      padding: 10px 12px;
+      border-radius: 12px;
+      cursor:pointer;
+      transition: transform .12s ease, filter .12s ease;
+      box-shadow: 0 10px 25px rgba(90,162,255,.15);
+    }
+    .btn:hover{ filter: brightness(1.05); transform: translateY(-1px); }
+    .btn:active{ transform: translateY(0px) scale(.99); }
+    .btn:disabled{ opacity:.55; cursor:not-allowed; transform:none; filter:none; }
+
+    .pill{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      background: rgba(17,24,38,.8);
+      border: 1px solid var(--line);
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+    }
+    .pill strong{ color: var(--text); font-weight: 650; }
+    #status{
+      margin: 10px 0 14px;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      background: rgba(17,24,38,.55);
+      border-radius: 14px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .layout{
+      display:grid;
+      grid-template-columns: 380px 1fr;
+      gap: 14px;
+      align-items: start;
+    }
+    @media (max-width: 1100px){
+      .layout{ grid-template-columns: 1fr; }
+      .actions input{ min-width: 260px; }
+    }
+
+    .panel{
+      background: linear-gradient(180deg, rgba(17,24,38,.92), rgba(15,23,36,.9));
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      box-shadow: var(--shadow);
+      overflow:hidden;
+    }
+    .panel .hd{
+      display:flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap:12px;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(15,23,36,.55);
+    }
+    .panel .hd h2{
+      margin:0;
+      font-size: 13px;
+      letter-spacing: .02em;
+      color: var(--text);
+      font-weight: 700;
+      text-transform: none;
+    }
+    .panel .bd{ padding: 0; }
+
+    .table-wrap{ max-height: 520px; overflow:auto; }
+    table{ width:100%; border-collapse: collapse; font-size: 12px; }
+    thead th{
+      position: sticky;
+      top: 0;
+      background: rgba(15,23,36,.92);
+      backdrop-filter: blur(6px);
+      border-bottom: 1px solid var(--line);
+      color: var(--muted);
+      text-align:left;
+      padding: 10px 12px;
+      font-weight: 650;
+      letter-spacing: .02em;
+    }
+    tbody td{
+      padding: 10px 12px;
+      border-bottom: 1px solid rgba(168,186,214,.08);
+      vertical-align: top;
+    }
+    tbody tr:hover td{ background: rgba(90,162,255,.06); }
+    .mono{ font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-variant-numeric: tabular-nums; }
+    .tag{
+      display:inline-flex;
+      align-items:center;
+      padding: 2px 8px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 11px;
+      white-space: nowrap;
+    }
+    a{ color: var(--accent); text-decoration:none; }
+    a:hover{ text-decoration: underline; }
+    .req{
+      color: rgba(231,236,243,.78);
+      max-width: 65ch;
+      overflow:hidden;
+      display:-webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+    }
+    .split{
+      display:grid;
+      grid-template-rows: auto 1fr;
+      gap:14px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>RutaPe — panel admin</h1>
+      <p class="sub">Scraping, perfiles y oportunidades. Optimizado para revisar rápido qué hay nuevo y abrir links sin ruido.</p>
+    </div>
+    <div class="actions">
+      <input id="q" placeholder="Buscar para scraping (ej: python junior lima)" />
+      <button class="btn" id="btn-refresh">Actualizar oportunidades</button>
+      <span class="pill" id="last-refresh"><strong>—</strong></span>
+    </div>
+  </header>
+  <div id="status">Cargando…</div>
+  <div class="layout">
+    <div class="panel">
+      <div class="hd">
+        <h2>Perfiles</h2>
+        <span class="pill"><strong id="c-prof">0</strong></span>
+      </div>
+      <div class="bd table-wrap">
+        <table>
+          <thead><tr><th>WA</th><th>rol</th><th>estado</th><th>región</th><th>meta</th></tr></thead>
+          <tbody id="tb-prof"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="split">
+      <div class="panel">
+        <div class="hd">
+          <h2>Oportunidades</h2>
+          <span class="pill"><strong id="c-opp">0</strong></span>
+        </div>
+        <div class="bd table-wrap">
+          <table>
+            <thead><tr><th class="mono">id</th><th>tipo</th><th>título</th><th>org</th><th>región</th><th>link</th></tr></thead>
+            <tbody id="tb-opp"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="hd">
+          <h2>Detalle (extendido)</h2>
+          <span class="pill"><strong id="c-opp2">0</strong></span>
+        </div>
+        <div class="bd table-wrap">
+          <table>
+            <thead><tr><th class="mono">id</th><th>requisitos / descripción</th><th>creado</th></tr></thead>
+            <tbody id="tb-opp2"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script>
+    const T = "{{ admin_token|e }}";
+    const qs = T ? ("?token=" + encodeURIComponent(T)) : "";
+    const esc = (s) => (s == null ? "" : String(s)).replace(/&/g,"&amp;").replace(/</g,"&lt;");
+
+    async function pull() {
+      const st = document.getElementById("status");
+      try {
+        const r = await fetch("/admin/api/snapshot" + qs);
+        if (!r.ok) { st.textContent = "Error " + r.status + " (¿token admin?)"; return; }
+        const d = await r.json();
+        st.textContent = "DB · perfiles: " + d.counts.profiles_total + " · oportunidades: " + d.counts.opportunities_total + " · eventos: " + d.counts.flow_events_total;
+        document.getElementById("c-prof").textContent = d.profiles.length;
+        document.getElementById("c-opp").textContent = d.opportunities.length;
+        document.getElementById("c-opp2").textContent = d.opportunities.length;
+        document.getElementById("tb-prof").innerHTML = d.profiles.map(p => (
+          "<tr>"
+          + "<td class='mono'>"+esc(p.wa_id)+"</td>"
+          + "<td><span class='tag'>"+esc(p.role)+"</span></td>"
+          + "<td>"+esc(p.state)+"</td>"
+          + "<td>"+esc(p.region || '—')+"</td>"
+          + "<td>"+esc(p.goal || '—')+"</td>"
+          + "</tr>"
+        )).join("");
+
+        document.getElementById("tb-opp").innerHTML = d.opportunities.map(o => {
+          const link = o.url ? ("<a href='"+esc(o.url)+"' target='_blank' rel='noreferrer'>abrir</a>") : "—";
+          return "<tr>"
+            + "<td class='mono'>"+o.id+"</td>"
+            + "<td><span class='tag'>"+esc(o.type)+"</span></td>"
+            + "<td>"+esc(o.title)+"</td>"
+            + "<td>"+esc(o.organization)+"</td>"
+            + "<td>"+esc(o.region)+"</td>"
+            + "<td>"+link+"</td>"
+            + "</tr>";
+        }).join("");
+        document.getElementById("tb-opp2").innerHTML = d.opportunities.map(o => {
+          return "<tr>"
+            + "<td class='mono'>"+o.id+"</td>"
+            + "<td class='req'>"+esc(o.requirements || "")+"</td>"
+            + "<td class='mono'>"+esc(o.created || "")+"</td>"
+            + "</tr>";
+        }).join("");
+      } catch (e) {
+        st.textContent = "Sin conexión al API";
+      }
+    }
+
+    async function refreshOpps() {
+      const btn = document.getElementById("btn-refresh");
+      const q = document.getElementById("q");
+      const tag = document.getElementById("last-refresh");
+      const st = document.getElementById("status");
+      btn.disabled = true;
+      const term = (q.value || "").trim() || "python";
+      try {
+        st.textContent = "Ejecutando scraping… (" + term + ")";
+        const r = await fetch("/admin/api/refresh-opportunities" + qs + "&q=" + encodeURIComponent(term) + "&limit=60", {
+          method: "POST",
+        });
+        if (!r.ok) {
+          st.textContent = "Error scraping: " + r.status + " (¿token admin?)";
+          return;
+        }
+        const d = await r.json();
+        tag.innerHTML = "<strong>OK</strong> · fetched " + d.fetched + " · inserted " + d.inserted;
+      } catch (e) {
+        tag.innerHTML = "<strong>Fallo</strong>";
+      } finally {
+        btn.disabled = false;
+        await pull();
+      }
+    }
+
+    document.getElementById("btn-refresh").addEventListener("click", refreshOpps);
+    document.getElementById("q").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") refreshOpps();
+    });
+    setInterval(pull, 4000);
+    pull();
+  </script>
+</body>
+</html>

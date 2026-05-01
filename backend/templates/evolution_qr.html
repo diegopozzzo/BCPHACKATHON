@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>QR Evolution — conectar WhatsApp</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 42rem; margin: 2rem auto; padding: 0 1rem; line-height: 1.5; color: #1a1a1a; }
+    h1 { font-size: 1.25rem; }
+    .note { background: #f4f4f5; border-radius: 8px; padding: 1rem; margin: 1rem 0; font-size: 0.9rem; }
+    #qr-wrap { text-align: center; margin: 1.5rem 0; min-height: 280px; }
+    #qr-wrap img { max-width: 280px; height: auto; border: 1px solid #e4e4e7; border-radius: 8px; }
+    #status { font-size: 0.9rem; color: #52525b; }
+    #err { color: #b91c1c; font-size: 0.9rem; white-space: pre-wrap; }
+    #checks { font-size: 0.85rem; color: #3f3f46; margin-top: 1rem; }
+    #checks h2 { font-size: 0.95rem; margin: 0 0 0.5rem 0; }
+    #checks ul { margin: 0; padding-left: 1.25rem; }
+    #diag { margin-top: 1rem; font-size: 0.85rem; }
+    #diag a { color: #2563eb; }
+    button { margin-top: 0.75rem; padding: 0.5rem 1rem; cursor: pointer; border-radius: 6px; border: 1px solid #d4d4d8; background: #fff; }
+    button:hover { background: #fafafa; }
+  </style>
+</head>
+<body>
+  <h1>Conectar WhatsApp (Evolution)</h1>
+  <p id="status">Cargando QR desde tu servidor Evolution…</p>
+  <div class="note">
+    <strong>Importante:</strong> el código QR lo genera <strong>tu instancia Evolution</strong> (GET <code>/instance/connect/{instance}</code>).
+    Al escanearlo, <strong>tu teléfono</strong> enlaza la sesión con <strong>ese servidor</strong>. Ni Cursor ni este chat obtienen acceso a tu WhatsApp: solo Evolution y tu backend con el webhook configurado ven los mensajes que tú permitas.
+  </div>
+  <div id="err" role="alert"></div>
+  <div id="checks" hidden></div>
+  <div id="qr-wrap"></div>
+  <button type="button" id="refresh">Actualizar QR</button>
+  <p id="diag"><a href="#" id="diag-link">Ver diagnóstico (JSON)</a></p>
+
+  <script>
+    const statusEl = document.getElementById("status");
+    const errEl = document.getElementById("err");
+    const checksEl = document.getElementById("checks");
+    const qrWrap = document.getElementById("qr-wrap");
+    const qs = window.location.search || "";
+
+    function renderChecks(items) {
+      checksEl.innerHTML = "";
+      checksEl.hidden = true;
+      if (!items || !items.length) return;
+      checksEl.hidden = false;
+      const h = document.createElement("h2");
+      h.textContent = "Qué revisar";
+      const ul = document.createElement("ul");
+      items.forEach((c) => {
+        const li = document.createElement("li");
+        li.textContent = c;
+        ul.appendChild(li);
+      });
+      checksEl.appendChild(h);
+      checksEl.appendChild(ul);
+    }
+
+    document.getElementById("diag-link").addEventListener("click", (ev) => {
+      ev.preventDefault();
+      window.open("/setup/evolution-status" + qs, "_blank", "noopener");
+    });
+
+    async function loadQr() {
+      errEl.textContent = "";
+      renderChecks(null);
+      statusEl.textContent = "Consultando Evolution…";
+      qrWrap.innerHTML = "";
+      try {
+        const r = await fetch("/setup/evolution-connect" + qs, { headers: { Accept: "application/json" } });
+        if (r.status === 401) {
+          statusEl.textContent = "";
+          errEl.textContent = "401: define ADMIN_DASHBOARD_TOKEN y abre esta página con ?token=TU_TOKEN (igual que /admin).";
+          return;
+        }
+        const data = await r.json();
+        if (data.error) {
+          statusEl.textContent = "";
+          errEl.textContent = data.error + (data.url ? "\nURL: " + data.url : "");
+          renderChecks(data.checks);
+          return;
+        }
+        if (data.base64) {
+          const src = data.base64.startsWith("data:") ? data.base64 : "data:image/png;base64," + data.base64;
+          const img = document.createElement("img");
+          img.src = src;
+          img.alt = "Código QR WhatsApp";
+          qrWrap.appendChild(img);
+          statusEl.textContent = "Escanea con WhatsApp → Dispositivos vinculados → Vincular dispositivo. El QR caduca (~60 s); pulsa Actualizar si hace falta.";
+        } else {
+          statusEl.textContent = data.message || "Sin imagen QR en esta respuesta.";
+          if (data.state) statusEl.textContent += " Estado: " + data.state + ".";
+          renderChecks(data.checks);
+        }
+      } catch (e) {
+        statusEl.textContent = "";
+        errEl.textContent = String(e);
+      }
+    }
+
+    document.getElementById("refresh").addEventListener("click", loadQr);
+    loadQr();
+    setInterval(loadQr, 55000);
+  </script>
+</body>
+</html>

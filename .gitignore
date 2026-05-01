@@ -1,0 +1,12 @@
+backend/.venv/
+backend/data/*.db
+backend/.env
+.env
+__pycache__/
+*.pyc
+.pytest_cache/
+.cursor-telegram/
+.runtime/
+backend/tmp*.html
+*.log
+.DS_Store

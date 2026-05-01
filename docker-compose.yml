@@ -1,0 +1,70 @@
+# Evolution API v2 + Postgres + Redis (stack mínimo documentado en Evolution)
+#
+# Uso típico (raíz del repo):
+#   1) Crea/edita .env aquí con AUTHENTICATION_API_KEY (compose lo lee automáticamente).
+#   2) En el mismo .env o en backend, pon EVOLUTION_API_KEY con el MISMO valor que AUTHENTICATION_API_KEY.
+#   3) docker compose up -d
+#   4) Abre http://localhost:8000/setup/evolution-qr (backend uvicorn) para el QR.
+#
+# Si ves "All connection attempts failed", Evolution no está escuchando en el puerto publicado (8080).
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: bcp_evolution_postgres
+    environment:
+      POSTGRES_USER: evolution
+      POSTGRES_PASSWORD: evolution
+      POSTGRES_DB: evolution
+    volumes:
+      - evolution_pg:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U evolution -d evolution"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: bcp_evolution_redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  evolution-api:
+    image: atendai/evolution-api:v2.1.1
+    container_name: bcp_evolution_api
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      SERVER_URL: ${SERVER_URL:-http://localhost:8080}
+      AUTHENTICATION_API_KEY: ${AUTHENTICATION_API_KEY:-change-me}
+      DATABASE_ENABLED: "true"
+      DATABASE_PROVIDER: postgresql
+      DATABASE_CONNECTION_URI: postgresql://evolution:evolution@postgres:5432/evolution?schema=public
+      DATABASE_CONNECTION_CLIENT_NAME: bcp_hackathon
+      DATABASE_SAVE_DATA_INSTANCE: "true"
+      DATABASE_SAVE_DATA_NEW_MESSAGE: "true"
+      CACHE_REDIS_ENABLED: "true"
+      CACHE_REDIS_URI: redis://redis:6379/0
+      CACHE_REDIS_PREFIX_KEY: evolution
+      DEL_INSTANCE: "false"
+      # WhatsApp Web cambia versión; sin esto v2.1.1 suele devolver {"count":0} sin QR (ver issues Evolution #2385 / #2430).
+      # Actualiza desde https://wppconnect.io/whatsapp-versions/ si deja de vincular.
+      # Sin sufijo "-alpha" suele evitar bucles en Baileys con algunas imágenes v2.1.x (ver #2430).
+      CONFIG_SESSION_PHONE_VERSION: ${CONFIG_SESSION_PHONE_VERSION:-2.3000.1037700952}
+
+volumes:
+  evolution_pg:
