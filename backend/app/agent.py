@@ -34,6 +34,10 @@ _CV_CONFIRM_NEG_HINT = re.compile(
     r"\b(pero|excepto|falta|faltan|correg|incorrect|agrega|añad(?:e|ir)|quita|cambia)\b",
     re.IGNORECASE,
 )
+_CV_CORR_DETAIL_HINT = re.compile(
+    r"\b(skills|skill|idioma|cursos|teléfono|telefono|celular|email|linkedin|github|nombre|error|equivoc)\b",
+    re.IGNORECASE,
+)
 
 GOAL_ALIASES = {
     "empleo": "empleo",
@@ -723,10 +727,9 @@ async def process_message(
             db.commit()
 
         neg_hint = bool(_CV_CONFIRM_NEG_HINT.search(low))
-        corrections = (
-            bool(_CV_CONFIRM_NO_PREFIX.match(stripped))
-            or neg_hint
-            or (len(stripped) >= 18 and not _CV_CONFIRM_CLEAN.match(stripped))
+        detail_hint = bool(_CV_CORR_DETAIL_HINT.search(low))
+        corrections = bool(_CV_CONFIRM_NO_PREFIX.match(stripped)) or neg_hint or (
+            len(stripped) >= 16 and detail_hint and not _CV_CONFIRM_CLEAN.match(stripped)
         )
 
         affirmative = (
