@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -12,13 +13,19 @@ from app.config import Settings
 logger = logging.getLogger(__name__)
 
 _CONNECT_FAILURE_CHECKS: list[str] = [
-    "En la raíz del repo (donde está docker-compose.yml): ejecuta docker compose up -d y espera ~30–60 s.",
+    "En la raíz del repo (docker-compose.yml): ejecuta docker compose up -d; luego docker compose ps y revisa postgres/redis healthy.",
     "Comprueba que el puerto 8080 esté libre y que el contenedor bcp_evolution_api esté arriba (docker ps).",
+    "El .env en la RAÍZ del repo (el que usa compose) debe definir AUTHENTICATION_API_KEY igual que EVOLUTION_API_KEY del backend.",
     "EVOLUTION_API_URL en el .env del backend debe apuntar al mismo host/puerto que escucha Evolution (p. ej. http://localhost:8080).",
-    "EVOLUTION_API_KEY debe coincidir exactamente con AUTHENTICATION_API_KEY del stack Docker (ver docker-compose.yml).",
+    "EVOLUTION_API_KEY debe coincidir exactamente con AUTHENTICATION_API_KEY del stack Docker (ver README y docker-compose.yml).",
     "EVOLUTION_INSTANCE debe ser el nombre de una instancia ya creada en Evolution; si no existe, créala en el manager o con POST /instance/create.",
     "En Windows, si falla solo con localhost, prueba EVOLUTION_API_URL=http://127.0.0.1:8080 y reinicia uvicorn.",
 ]
+
+
+def _instance_url_segment(name: str) -> str:
+    """Nombre de instancia en path (Evolution usa :instanceName en la ruta)."""
+    return quote((name or "").strip(), safe="")
 
 
 def _connection_failure_payload(url: str, base: str, technical: str) -> dict[str, Any]:
@@ -123,7 +130,7 @@ async def fetch_evolution_connect(settings: Settings) -> dict[str, Any]:
             "error": "Falta EVOLUTION_API_URL, EVOLUTION_INSTANCE o EVOLUTION_API_KEY en .env",
             "instance": inst or None,
         }
-    url = f"{base}/instance/connect/{inst}"
+    url = f"{base}/instance/connect/{_instance_url_segment(inst)}"
     data: Any = {}
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:
@@ -200,7 +207,7 @@ async def fetch_evolution_connect(settings: Settings) -> dict[str, Any]:
             try:
                 async with httpx.AsyncClient(timeout=15.0) as c2:
                     rs = await c2.get(
-                        f"{base}/instance/connectionState/{inst}",
+                        f"{base}/instance/connectionState/{_instance_url_segment(inst)}",
                         headers={"apikey": key},
                     )
                     if rs.status_code == 200:
@@ -256,8 +263,9 @@ async def fetch_evolution_status(settings: Settings) -> dict[str, Any]:
         out["error"] = "Falta EVOLUTION_API_KEY o EVOLUTION_INSTANCE para consultar la instancia."
         return out
 
-    state_url = f"{base}/instance/connectionState/{inst}"
-    connect_url = f"{base}/instance/connect/{inst}"
+    seg = _instance_url_segment(inst)
+    state_url = f"{base}/instance/connectionState/{seg}"
+    connect_url = f"{base}/instance/connect/{seg}"
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
             r = await client.get(state_url, headers={"apikey": key})
@@ -307,4 +315,132 @@ async def fetch_evolution_status(settings: Settings) -> dict[str, Any]:
     out["ok"] = True
     out["connect_url"] = connect_url
     out["hint"] = "Si base_reachable es true pero el QR falla, abre connect_url en la API o usa /setup/evolution-qr."
+    return out
+
+
+def _evolution_base_inst_key(settings: Settings) -> tuple[str, str, str] | None:
+    base = (settings.evolution_base_url or "").strip().rstrip("/")
+    inst = (settings.evolution_instance or "").strip()
+    key = (settings.evolution_api_key or "").strip()
+    if not base or not inst or not key:
+        return None
+    return base, inst, key
+
+
+async def fetch_evolution_logout(settings: Settings) -> dict[str, Any]:
+    """
+    Cierra la sesión de WhatsApp en Evolution (documentación v2: DELETE /instance/logout/{instance}).
+    Tras esto suele hacer falta volver a GET /instance/connect para un QR nuevo.
+    """
+    tup = _evolution_base_inst_key(settings)
+    if not tup:
+        return {
+            "ok": False,
+            "error": "Falta EVOLUTION_API_URL, EVOLUTION_INSTANCE o EVOLUTION_API_KEY en .env",
+        }
+    base, inst, key = tup
+    url = f"{base}/instance/logout/{_instance_url_segment(inst)}"
+    try:
+        async with httpx.AsyncClient(timeout=90.0) as client:
+            r = await client.delete(url, headers={"apikey": key})
+            try:
+                body = r.json()
+            except json.JSONDecodeError:
+                body = {"raw": (r.text or "")[:500]}
+            if r.status_code == 405:
+                r2 = await client.post(url, headers={"apikey": key})
+                r = r2
+                try:
+                    body = r2.json()
+                except json.JSONDecodeError:
+                    body = {"raw": (r2.text or "")[:500]}
+    except httpx.RequestError as e:
+        logger.warning("Evolution logout failed: %s", e)
+        return _connection_failure_payload(url, base, str(e))
+
+    ok = 200 <= r.status_code < 300
+    out: dict[str, Any] = {"ok": ok, "http_status": r.status_code, "instance": inst, "evolution_body": body}
+    if not ok:
+        out["error"] = (
+            _format_evolution_error(body, r.status_code)
+            if isinstance(body, dict)
+            else f"Evolution HTTP {r.status_code}"
+        )
+    return out
+
+
+async def fetch_evolution_restart(settings: Settings) -> dict[str, Any]:
+    """
+    Reinicia la instancia en Evolution.
+
+    En el código oficial de Evolution API la ruta es **POST** `/instance/restart/:instanceName`
+    (no PUT; PUT suele responder 404 en Express).
+    """
+    tup = _evolution_base_inst_key(settings)
+    if not tup:
+        return {
+            "ok": False,
+            "error": "Falta EVOLUTION_API_URL, EVOLUTION_INSTANCE o EVOLUTION_API_KEY en .env",
+        }
+    base, inst, key = tup
+    seg = _instance_url_segment(inst)
+    url = f"{base}/instance/restart/{seg}"
+    headers = {"apikey": key}
+    last_status = 0
+    last_body: Any = {}
+    try:
+        async with httpx.AsyncClient(timeout=90.0) as client:
+            r = await client.post(url, headers=headers)
+            last_status = r.status_code
+            try:
+                last_body = r.json()
+            except json.JSONDecodeError:
+                last_body = {"raw": (r.text or "")[:500]}
+            if not (200 <= r.status_code < 300):
+                r2 = await client.put(url, headers=headers)
+                last_status = r2.status_code
+                try:
+                    last_body = r2.json()
+                except json.JSONDecodeError:
+                    last_body = {"raw": (r2.text or "")[:500]}
+    except httpx.RequestError as e:
+        logger.warning("Evolution restart failed: %s", e)
+        return _connection_failure_payload(url, base, str(e))
+
+    ok = 200 <= last_status < 300
+    if ok and isinstance(last_body, dict) and last_body.get("error") is True:
+        ok = False
+        last_status = 400
+
+    out: dict[str, Any] = {
+        "ok": ok,
+        "http_status": last_status,
+        "instance": inst,
+        "evolution_body": last_body,
+    }
+    if not ok:
+        msg = (
+            _format_evolution_error(last_body, last_status)
+            if isinstance(last_body, dict)
+            else f"Evolution HTTP {last_status}"
+        )
+        if last_status == 404:
+            msg += (
+                "\n\nTip: el reinicio en Evolution es POST /instance/restart/{nombre}. "
+                "Comprueba que EVOLUTION_INSTANCE coincida con el nombre en Evolution (Swagger GET fetchInstances)."
+            )
+        if isinstance(last_body, dict) and last_status in (400, 404):
+            parts: list[str] = []
+            inner = last_body.get("message")
+            if isinstance(inner, list):
+                parts.extend(str(x) for x in inner if x is not None)
+            elif isinstance(inner, str):
+                parts.append(inner)
+            blob = " ".join(parts).lower()
+            if "not connected" in blob or "does not exist" in blob:
+                out["checks"] = [
+                    "Reiniciar solo aplica si la instancia existe en Evolution y la sesión no está en state «close». "
+                    "Si no está vinculada, usá «Actualizar QR». Si está colgada, probá «Desconectar» y volvé a escanear.",
+                ]
+        out["error"] = msg
     return out

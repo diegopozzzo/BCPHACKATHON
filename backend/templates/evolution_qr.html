@@ -3,36 +3,177 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>QR Evolution — conectar WhatsApp</title>
+  <title>RutaPe — Conectar WhatsApp</title>
   <style>
-    body { font-family: system-ui, sans-serif; max-width: 42rem; margin: 2rem auto; padding: 0 1rem; line-height: 1.5; color: #1a1a1a; }
-    h1 { font-size: 1.25rem; }
-    .note { background: #f4f4f5; border-radius: 8px; padding: 1rem; margin: 1rem 0; font-size: 0.9rem; }
-    #qr-wrap { text-align: center; margin: 1.5rem 0; min-height: 280px; }
-    #qr-wrap img { max-width: 280px; height: auto; border: 1px solid #e4e4e7; border-radius: 8px; }
-    #status { font-size: 0.9rem; color: #52525b; }
-    #err { color: #b91c1c; font-size: 0.9rem; white-space: pre-wrap; }
-    #checks { font-size: 0.85rem; color: #3f3f46; margin-top: 1rem; }
-    #checks h2 { font-size: 0.95rem; margin: 0 0 0.5rem 0; }
+    :root {
+      --bg: #0c0f14;
+      --card: #131920;
+      --text: #eef2f7;
+      --muted: #93a0b5;
+      --line: rgba(255,255,255,.08);
+      --accent: #5b9fff;
+      --accent2: #7ae3c3;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      margin: 0;
+      min-height: 100vh;
+      color: var(--text);
+      background:
+        radial-gradient(900px 500px at 10% 0%, rgba(91, 159, 255, .12), transparent 55%),
+        radial-gradient(700px 420px at 92% 18%, rgba(122, 227, 195, .08), transparent 50%),
+        var(--bg);
+      padding: 28px 18px 48px;
+      line-height: 1.55;
+    }
+    .wrap {
+      max-width: 28rem;
+      margin: 0 auto;
+    }
+    h1 {
+      font-size: 1.35rem;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      margin: 0 0 8px;
+    }
+    .lead {
+      color: var(--muted);
+      font-size: .95rem;
+      margin: 0 0 22px;
+    }
+    .card {
+      background: linear-gradient(165deg, rgba(19,25,32,.95), rgba(14,18,24,.92));
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 18px 18px 16px;
+      box-shadow: 0 20px 50px rgba(0,0,0,.35);
+      margin-bottom: 18px;
+    }
+    .card strong { color: var(--text); }
+    #qr-wrap {
+      text-align: center;
+      margin: 8px 0 12px;
+      min-height: 288px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 14px;
+      border: 1px dashed var(--line);
+      background: rgba(0,0,0,.2);
+    }
+    #qr-wrap img {
+      max-width: 280px;
+      height: auto;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      box-shadow: 0 12px 36px rgba(0,0,0,.4);
+    }
+    #status { font-size: .92rem; color: var(--muted); margin-bottom: 12px; min-height: 2.6em; }
+    #err {
+      color: #fca5a5;
+      font-size: .88rem;
+      white-space: pre-wrap;
+      margin: 0 0 12px;
+    }
+    #checks {
+      font-size: .85rem;
+      color: var(--muted);
+      margin: 10px 0;
+    }
+    #checks h2 {
+      font-size: .9rem;
+      margin: 0 0 8px;
+      font-weight: 650;
+      color: var(--text);
+    }
     #checks ul { margin: 0; padding-left: 1.25rem; }
-    #diag { margin-top: 1rem; font-size: 0.85rem; }
-    #diag a { color: #2563eb; }
-    button { margin-top: 0.75rem; padding: 0.5rem 1rem; cursor: pointer; border-radius: 6px; border: 1px solid #d4d4d8; background: #fff; }
-    button:hover { background: #fafafa; }
+    .btn-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 12px;
+      align-items: center;
+    }
+    button {
+      padding: 11px 16px;
+      cursor: pointer;
+      border-radius: 12px;
+      border: 1px solid rgba(91,159,255,.45);
+      background: linear-gradient(180deg, rgba(91,159,255,.95), rgba(91,159,255,.55));
+      color: #081018;
+      font-weight: 700;
+      font-size: .88rem;
+      transition: filter .12s ease, transform .12s ease;
+    }
+    button:hover:not(:disabled) { filter: brightness(1.06); transform: translateY(-1px); }
+    button:active:not(:disabled) { transform: translateY(0); }
+    button:disabled { opacity: .5; cursor: not-allowed; transform: none; filter: none; }
+    button.btn-secondary {
+      border-color: var(--line);
+      background: rgba(255,255,255,.08);
+      color: var(--text);
+    }
+    button.btn-danger {
+      border-color: rgba(248,113,113,.55);
+      background: linear-gradient(180deg, rgba(248,113,113,.92), rgba(220,90,90,.78));
+      color: #1a0a0a;
+    }
+    #diag { margin-top: 14px; font-size: .84rem; color: var(--muted); }
+    #diag a { color: var(--accent); text-decoration: none; }
+    #diag a:hover { text-decoration: underline; }
+    .pill {
+      display: inline-flex;
+      gap: 8px;
+      align-items: center;
+      font-size: .75rem;
+      padding: 6px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      color: var(--muted);
+      margin-bottom: 14px;
+      background: rgba(255,255,255,.03);
+    }
+    .pill span.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent2); box-shadow: 0 0 12px var(--accent2); }
   </style>
 </head>
 <body>
-  <h1>Conectar WhatsApp (Evolution)</h1>
-  <p id="status">Cargando QR desde tu servidor Evolution…</p>
-  <div class="note">
-    <strong>Importante:</strong> el código QR lo genera <strong>tu instancia Evolution</strong> (GET <code>/instance/connect/{instance}</code>).
-    Al escanearlo, <strong>tu teléfono</strong> enlaza la sesión con <strong>ese servidor</strong>. Ni Cursor ni este chat obtienen acceso a tu WhatsApp: solo Evolution y tu backend con el webhook configurado ven los mensajes que tú permitas.
+  <div class="wrap">
+    <div class="pill"><span class="dot" aria-hidden="true"></span> Evolution API</div>
+    <h1>Vinculá WhatsApp</h1>
+    <p class="lead">Generamos el QR desde tu instancia Evolution para que enlace con <strong>tu</strong> servidor.</p>
+    <div id="status">Cargando QR…</div>
+    <div id="err" role="alert"></div>
+    <div id="checks" hidden></div>
+
+    <div class="card">
+      <div id="qr-wrap"></div>
+      <div class="btn-row">
+        <button type="button" id="refresh">Actualizar QR</button>
+        <button type="button" id="btn-restart" class="btn-secondary">Reiniciar conexión</button>
+        <button type="button" id="btn-disconnect" class="btn-danger">Desconectar WhatsApp</button>
+      </div>
+      <p id="diag"><a href="#" id="diag-link">Ver diagnóstico (JSON)</a></p>
+    </div>
+
+    <div class="card">
+      <strong>Importante:</strong> el QR lo genera Evolution (<code>GET /instance/connect/{instance}</code>).
+      <strong>Desconectar</strong> cierra la sesión en Evolution (vas a tener que volver a escanear QR).
+      <strong>Reiniciar</strong> reinicia la instancia si quedó colgada; después usá «Actualizar QR» si hace falta.
+      Revisá que el webhook apunte a este backend.
+    </div>
+
+    <div class="card" style="font-size:.88rem;color:var(--muted);">
+      <strong style="color:var(--text);">¿Se conecta y al rato se deshabilita en el celu?</strong>
+      Suele ser sesión de WhatsApp Web (Baileys), no esta página.
+      <ul style="margin:8px 0 0;padding-left:1.2rem;line-height:1.45;">
+        <li>Solo <strong>un</strong> Evolution / un stack con ese número (otro Docker con el mismo WhatsApp la tumba).</li>
+        <li>En el teléfono: <em>Dispositivos vinculados</em> → borrá sesiones viejas.</li>
+        <li>En la raíz del repo, en <code>.env</code>, probá otra <code>CONFIG_SESSION_PHONE_VERSION</code> (lista en wppconnect.io/whatsapp-versions) y <code>docker compose up -d --force-recreate evolution-api</code>.</li>
+        <li><code>docker logs bcp_evolution_api --tail 100</code> para ver el error exacto.</li>
+      </ul>
+    </div>
   </div>
-  <div id="err" role="alert"></div>
-  <div id="checks" hidden></div>
-  <div id="qr-wrap"></div>
-  <button type="button" id="refresh">Actualizar QR</button>
-  <p id="diag"><a href="#" id="diag-link">Ver diagnóstico (JSON)</a></p>
 
   <script>
     const statusEl = document.getElementById("status");
@@ -72,7 +213,7 @@
         const r = await fetch("/setup/evolution-connect" + qs, { headers: { Accept: "application/json" } });
         if (r.status === 401) {
           statusEl.textContent = "";
-          errEl.textContent = "401: define ADMIN_DASHBOARD_TOKEN y abre esta página con ?token=TU_TOKEN (igual que /admin).";
+          errEl.textContent = "401: definí ADMIN_DASHBOARD_TOKEN y abrí esta página con ?token=TU_TOKEN.";
           return;
         }
         const data = await r.json();
@@ -86,11 +227,11 @@
           const src = data.base64.startsWith("data:") ? data.base64 : "data:image/png;base64," + data.base64;
           const img = document.createElement("img");
           img.src = src;
-          img.alt = "Código QR WhatsApp";
+          img.alt = "QR WhatsApp";
           qrWrap.appendChild(img);
-          statusEl.textContent = "Escanea con WhatsApp → Dispositivos vinculados → Vincular dispositivo. El QR caduca (~60 s); pulsa Actualizar si hace falta.";
+          statusEl.textContent = "Escaneá desde WhatsApp → Dispositivos vinculados → Vincular dispositivo (~60 s). Actualizá si expira.";
         } else {
-          statusEl.textContent = data.message || "Sin imagen QR en esta respuesta.";
+          statusEl.textContent = data.message || "Sin QR en esta respuesta.";
           if (data.state) statusEl.textContent += " Estado: " + data.state + ".";
           renderChecks(data.checks);
         }
@@ -100,7 +241,55 @@
       }
     }
 
-    document.getElementById("refresh").addEventListener("click", loadQr);
+    const refreshBtn = document.getElementById("refresh");
+    const restartBtn = document.getElementById("btn-restart");
+    const disconnectBtn = document.getElementById("btn-disconnect");
+
+    function setBusy(busy) {
+      [refreshBtn, restartBtn, disconnectBtn].forEach((b) => { b.disabled = busy; });
+    }
+
+    async function postAction(path, label) {
+      errEl.textContent = "";
+      renderChecks(null);
+      setBusy(true);
+      statusEl.textContent = label + "…";
+      try {
+        const r = await fetch(path + qs, { method: "POST", headers: { Accept: "application/json" } });
+        if (r.status === 401) {
+          statusEl.textContent = "";
+          errEl.textContent = "401: definí ADMIN_DASHBOARD_TOKEN y ?token=…";
+          return;
+        }
+        const data = await r.json();
+        if (!data.ok) {
+          statusEl.textContent = "";
+          errEl.textContent = data.error || ("Error HTTP " + (data.http_status || r.status));
+          if (data.checks) renderChecks(data.checks);
+          return;
+        }
+        statusEl.textContent = "Listo. Actualizando QR…";
+        await new Promise((res) => setTimeout(res, 1200));
+        await loadQr();
+      } catch (e) {
+        statusEl.textContent = "";
+        errEl.textContent = String(e);
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    restartBtn.addEventListener("click", () => {
+      if (!confirm("¿Reiniciar la instancia en Evolution? (útil si la conexión quedó colgada)")) return;
+      postAction("/setup/evolution-restart", "Reiniciando instancia");
+    });
+
+    disconnectBtn.addEventListener("click", () => {
+      if (!confirm("¿Desconectar WhatsApp de esta instancia? Vas a tener que volver a escanear el QR.")) return;
+      postAction("/setup/evolution-disconnect", "Desconectando");
+    });
+
+    refreshBtn.addEventListener("click", loadQr);
     loadQr();
     setInterval(loadQr, 55000);
   </script>

@@ -3,16 +3,19 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
+from fastapi import APIRouter, Body, Depends, Header, HTTPException, Query, Request
+from pydantic import BaseModel, Field
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
-from app.collectors.collect import collect_all
+from app.collectors.collect import collect_all, collect_from_seed_url
+from app.collectors.managed_urls import is_managed_scrape_url, validate_normalized
 from app.db import get_db
 from app.models import FlowEvent, Opportunity, UserProfile
+from app.profile_merge import merge_any_phone_duplicates, merge_lid_profiles_into_canonical
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -33,6 +36,105 @@ def _require_admin(
         raise HTTPException(status_code=401, detail="Token admin inválido o faltante")
 
 
+class ScrapeSeedBody(BaseModel):
+    """URL semilla + palabra clave (si la home no trae listado, se usa en pe.computrabajo.com)."""
+
+    url: str = Field(min_length=10, max_length=2048)
+    query: str = Field(default="python", max_length=160)
+    limit: int = Field(default=100, ge=1, le=300)
+
+
+def _ingest_scraped_opportunities(db: Session, items: list[Any]) -> dict[str, Any]:
+    """Valida, inserta/actualiza y desactiva filas gestionadas igual que el sync global."""
+    db.execute(update(Opportunity).where(Opportunity.url.contains("indeed.com")).values(active=False))
+    db.execute(update(Opportunity).where(Opportunity.url.contains("example.com")).values(active=False))
+    db.commit()
+
+    valid_items: list[Any] = []
+    skipped_invalid = 0
+    skip_reasons: dict[str, int] = {}
+    for it in items:
+        ok, err = validate_normalized(it)
+        if not ok:
+            skipped_invalid += 1
+            skip_reasons[err] = skip_reasons.get(err, 0) + 1
+            continue
+        valid_items.append(it)
+
+    fresh_by_url = {it.url: it for it in valid_items}
+    fresh_urls = set(fresh_by_url.keys())
+
+    all_managed = db.scalars(select(Opportunity).where(Opportunity.employer_wa_id.is_(None))).all()
+
+    deactivated = 0
+    updated = 0
+    revived = 0
+    for o in all_managed:
+        if not is_managed_scrape_url(o.url):
+            continue
+        if o.url in fresh_by_url:
+            it = fresh_by_url[o.url]
+            nt = (it.title or "")[:255]
+            no = (it.organization or "")[:255]
+            nr = (it.region or "")[:128]
+            nreq = it.requirements or ""
+            ntyp = (it.type or "empleo")[:32]
+            changed = (
+                (o.title or "").strip() != nt.strip()
+                or (o.organization or "").strip() != no.strip()
+                or (o.region or "").strip() != nr.strip()
+                or (o.requirements or "").strip() != nreq.strip()
+                or (o.type or "").strip() != ntyp.strip()
+            )
+            if changed:
+                o.title = nt
+                o.organization = no
+                o.region = nr
+                o.requirements = nreq
+                o.type = ntyp
+                updated += 1
+            if not o.active:
+                revived += 1
+            o.active = True
+            continue
+        if o.active:
+            o.active = False
+            deactivated += 1
+
+    existing_urls = set(db.scalars(select(Opportunity.url)).all())
+    inserted = 0
+    for it in valid_items:
+        if it.url in existing_urls:
+            continue
+        db.add(
+            Opportunity(
+                title=(it.title or "")[:255],
+                type=(it.type or "empleo")[:32],
+                organization=(it.organization or "")[:255],
+                region=(it.region or "")[:128],
+                requirements=it.requirements or "",
+                url=it.url[:512],
+                active=True,
+            )
+        )
+        inserted += 1
+        existing_urls.add(it.url)
+
+    db.commit()
+
+    return {
+        "fetched": len(items),
+        "validated_ok": len(valid_items),
+        "skipped_invalid": skipped_invalid,
+        "skip_reasons": skip_reasons,
+        "inserted": inserted,
+        "updated": updated,
+        "deactivated": deactivated,
+        "revived": revived,
+        "fresh_urls": len(fresh_urls),
+    }
+
+
 @router.get("", response_class=HTMLResponse)
 def admin_dashboard(
     request: Request,
@@ -43,8 +145,9 @@ def admin_dashboard(
 ):
     _require_admin(settings, x_admin_token, token)
     return templates.TemplateResponse(
+        request,
         "admin.html",
-        {"request": request, "admin_token": token or x_admin_token or ""},
+        {"admin_token": token or x_admin_token or ""},
     )
 
 
@@ -61,6 +164,7 @@ def admin_snapshot(
     opps = list(
         db.scalars(
             select(Opportunity)
+            .where(Opportunity.active.is_(True))
             .where(~Opportunity.url.contains("indeed.com"))
             .where(~Opportunity.url.contains("example.com"))
             .order_by(Opportunity.id.desc())
@@ -119,6 +223,20 @@ def admin_snapshot(
     }
 
 
+@router.post("/api/merge-wa-profiles")
+def merge_wa_profiles(
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+    token: str | None = Query(None),
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+) -> dict[str, Any]:
+    """Fusiona perfiles @lid y duplicados por mismo número (mismo usuario)."""
+    _require_admin(settings, x_admin_token, token)
+    a = merge_any_phone_duplicates(db)
+    b = merge_lid_profiles_into_canonical(db, settings)
+    return {"phone_dupes": a, "lid_merge": b}
+
+
 @router.post("/api/refresh-opportunities")
 def refresh_opportunities(
     q: str = Query("python"),
@@ -129,38 +247,34 @@ def refresh_opportunities(
     x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
 ) -> dict[str, Any]:
     _require_admin(settings, x_admin_token, token)
-    # Hard-disable sources we do not support anymore (and that look bad in UI).
-    db.query(Opportunity).filter(Opportunity.url.contains("indeed.com")).update(
-        {"active": False},
-        synchronize_session=False,
-    )
-    # Disable initial demo rows.
-    db.query(Opportunity).filter(Opportunity.url.contains("example.com")).update(
-        {"active": False},
-        synchronize_session=False,
-    )
-    db.commit()
-
     items = collect_all(query=q, limit_total=limit)
+    return _ingest_scraped_opportunities(db, items)
 
-    existing_urls = {u for (u,) in db.query(Opportunity.url).all() if isinstance(u, str)}
-    inserted = 0
-    for it in items:
-        if it.url in existing_urls:
-            continue
-        db.add(
-            Opportunity(
-                title=it.title,
-                type=it.type,
-                organization=it.organization,
-                region=it.region,
-                requirements=it.requirements,
-                url=it.url,
-                active=True,
-            )
+
+@router.post("/api/scrape-seed")
+def scrape_seed_url(
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+    token: str | None = Query(None),
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+    body: ScrapeSeedBody = Body(...),
+) -> dict[str, Any]:
+    """
+    Importación desde una URL (p. ej. portal Computrabajo): Scrapling + mismas reglas de validación
+    y merge que «Actualizar oportunidades». Otros dominios se pueden ir añadiendo por host.
+    """
+    _require_admin(settings, x_admin_token, token)
+    try:
+        items = collect_from_seed_url(
+            seed_url=body.url.strip(),
+            query=body.query.strip(),
+            limit=int(body.limit),
         )
-        inserted += 1
-    if inserted:
-        db.commit()
-
-    return {"fetched": len(items), "inserted": inserted}
+    except ValueError as e:
+        if str(e) == "unsupported_seed_host":
+            raise HTTPException(
+                status_code=422,
+                detail="Dominio no soportado para importación por URL. Hoy: computrabajo.com (se usa listado PE + tu palabra clave si la URL es la home).",
+            ) from e
+        raise HTTPException(status_code=422, detail=str(e)) from e
+    return _ingest_scraped_opportunities(db, items)

@@ -111,6 +111,71 @@ def collect_edx_business(*, query: str, limit: int = 20) -> list[NormalizedOppor
     ]
 
 
+def collect_udemy(*, query: str, limit: int = 24) -> list[NormalizedOpportunity]:
+    q = quote_plus(query.strip() or "python")
+    url = f"https://www.udemy.com/courses/search/?q={q}&lang=en"
+    html = fetch_html(url, timeout=50)
+    items = extract_anchor_cards(
+        base_url="https://www.udemy.com/",
+        html=html,
+        source="udemy",
+        opp_type="curso",
+        card_selector="a[href*='/course/'], div[class*='course-card'], li",
+        title_selector="h3::text, h4::text, span::text, a::text",
+        url_selector="a::attr(href)",
+        org_selector=None,
+        region_selector=None,
+        req_selector="span::text, p::text",
+        limit=limit,
+        url_must_contain="/course/",
+        url_must_not_contain="/topic/",
+    )
+    return [
+        NormalizedOpportunity(
+            title=it.title,
+            type="curso",
+            organization="Udemy",
+            region="Remoto",
+            requirements=it.requirements,
+            url=it.url,
+            source=it.source,
+        )
+        for it in items
+    ]
+
+
+def collect_edx_org(*, query: str, limit: int = 20) -> list[NormalizedOpportunity]:
+    q = quote_plus(query.strip() or "data")
+    url = f"https://www.edx.org/search?q={q}"
+    html = fetch_html(url, timeout=50)
+    items = extract_anchor_cards(
+        base_url="https://www.edx.org/",
+        html=html,
+        source="edx",
+        opp_type="curso",
+        card_selector="a[href*='/learn/'], a[href*='/course/'], a[href*='professional'], li",
+        title_selector="h3::text, span::text, a::text",
+        url_selector="a::attr(href)",
+        org_selector=None,
+        region_selector=None,
+        req_selector="span::text, p::text",
+        limit=limit,
+        url_must_not_contain="/schools/",
+    )
+    return [
+        NormalizedOpportunity(
+            title=it.title,
+            type="curso",
+            organization="edX",
+            region="Remoto",
+            requirements=it.requirements,
+            url=it.url,
+            source=it.source,
+        )
+        for it in items
+    ]
+
+
 def collect_coursera(*, query: str, limit: int = 20) -> list[NormalizedOpportunity]:
     q = quote_plus(query.strip() or "python")
     url = f"https://www.coursera.org/search?query={q}"
@@ -143,9 +208,16 @@ def collect_coursera(*, query: str, limit: int = 20) -> list[NormalizedOpportuni
 
 
 def collect_courses(*, query: str, limit: int = 60) -> list[NormalizedOpportunity]:
-    per_source = max(5, limit // 4)
+    per_source = max(5, limit // 6)
     items: list[NormalizedOpportunity] = []
-    for fn in (collect_mtpe, collect_platzi, collect_edx_business, collect_coursera):
+    for fn in (
+        collect_mtpe,
+        collect_platzi,
+        collect_edx_org,
+        collect_edx_business,
+        collect_coursera,
+        collect_udemy,
+    ):
         try:
             items.extend(fn(query=query, limit=per_source))
         except Exception:  # noqa: BLE001

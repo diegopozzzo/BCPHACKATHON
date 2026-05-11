@@ -29,7 +29,19 @@ if ($dockerOk) {
     $ok += "Docker Engine responde."
     $names = docker ps --format "{{.Names}}" 2>$null
     if ($names -match "bcp_evolution_api") { $ok += "Contenedor bcp_evolution_api en ejecución." }
-    else { $issues += "Stack BCP: falta bcp_evolution_api. En la raíz: docker compose up -d" }
+    else { $issues += "Stack BCP: falta bcp_evolution_api. En la raíz del repo: docker compose up -d" }
+    if ($names -match "bcp_evolution_postgres") { $ok += "Postgres Evolution (postgres) arriba." }
+    else { $issues += "Falta bcp_evolution_postgres (postgres del compose)." }
+    if ($names -match "bcp_evolution_redis") { $ok += "Redis Evolution arriba." }
+    else { $issues += "Falta bcp_evolution_redis." }
+    Push-Location $root
+    try {
+        $ccp = docker compose ps --status running 2>$null
+        if ($LASTEXITCODE -eq 0 -and $ccp) {
+            Write-Host "`nServicios compose (running):" -ForegroundColor DarkGray
+            $ccp | Write-Host -ForegroundColor DarkGray
+        }
+    } finally { Pop-Location }
 } else {
     $issues += "Docker no responde: abre Docker Desktop y espera a 'Engine running'."
 }

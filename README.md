@@ -22,7 +22,9 @@ copy ..\env.example ..\.env
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-Tras un reinicio del PC: abre **Docker Desktop**, en la raíz del repo ejecuta `docker compose up -d`, arranca uvicorn como arriba y opcionalmente `.\scripts\validate-stack.ps1` (comprueba Docker, puertos 8080/8000 y que `EVOLUTION_API_KEY` coincida con `AUTHENTICATION_API_KEY`).
+Tras un reinicio del PC: abre **Docker Desktop** y, en la raíz del repo, **`.\scripts\start-dev.ps1`** (levanta `docker compose` y luego uvicorn), o manualmente `docker compose up -d` + uvicorn como arriba. Opcional: **`.\scripts\validate-stack.ps1`** (Docker, puertos 8080/8000, claves Evolution alineadas).
+
+Pruebas mínimas (desde `backend` con el venv activado): `python -m unittest discover -s tests -v`
 
 Usa el mismo `PORT` que en tu `.env` si quieres alinearlo:
 
@@ -91,15 +93,37 @@ Resumen:
 
 ## Evolution con Docker
 
-Variables opcionales: [.env.evolution.example](.env.evolution.example) (copia como `.env` junto a `docker-compose.yml`).
+En la **raíz del repo** existe `docker-compose.yml` (Evolution API + Postgres + Redis). Compose lee **`./.env`** de esa misma carpeta para sustituir `AUTHENTICATION_API_KEY` y `SERVER_URL`.
+
+Plantillas: [env.example](env.example) y [.env.evolution.example](.env.evolution.example).
+
+Checklist rápido tras **`docker compose up -d`**:
+
+1. Estado: `docker compose ps` — `postgres` y `redis` en `healthy`; `evolution-api` escuchando.
+2. Variables: `AUTHENTICATION_API_KEY` (en `.env` raíz para compose) debe ser **idéntico** a `EVOLUTION_API_KEY` del backend; `SERVER_URL` en local suele ser `http://localhost:8080` (ajusta si usas otro puerto/túnel).
+3. Instancia: el nombre debe coincidir con `EVOLUTION_INSTANCE` (Swagger en `http://localhost:8080` o crear vía Manager).
+4. QR: backend en marcha → [http://localhost:8000/setup/evolution-qr](http://localhost:8000/setup/evolution-qr).
+5. Webhook: mensajes entrantes contra `POST .../webhooks/evolution`; en **`docker-compose.yml`** podés descomentar `WEBHOOK_GLOBAL_*` para apuntar a `http://host.docker.internal:8000/webhooks/evolution` solo en desarrollo. En internet hace falta HTTPS (ngrok, Cloudflare Tunnel, etc.).
 
 ```powershell
+cd <raíz-del-repo>
 docker compose up -d
+docker compose ps
+# opcional: .\scripts\validate-stack.ps1
 ```
 
-Luego crea una instancia y escanea QR según la documentación de Evolution (v2). Configura el webhook de la instancia a tu URL pública + ruta `/webhooks/evolution` y evento `MESSAGES_UPSERT` / `messages.upsert`.
+En Linux con Docker motor clásico, `extra_hosts: host-gateway` permite que Evolution resuelva el backend en el host; en Docker Desktop para Windows/Mac `host.docker.internal` ya suele estar disponible.
 
-En Windows, si el backend corre en el host y Evolution en Docker, a veces se usa `http://host.docker.internal:8000` desde Evolution para pruebas; para WhatsApp real el webhook debe ser una URL pública HTTPS.
+### Conexión inestable (en el celu ves “última conexión” y el dispositivo se deshabilita)
+
+Eso lo maneja **WhatsApp Web + Baileys dentro de Evolution**, no el backend RutaPe. Revisá en este orden:
+
+1. **Un solo servidor Evolution** con ese número. Si tenés otro Docker/proyecto (p. ej. NEKOBOT) con el mismo WhatsApp, se pisan las sesiones y una desconecta a la otra.
+2. **Pocos dispositivos vinculados.** En el teléfono: *Ajustes → Dispositivos vinculados* y borrá sesiones viejas (Web, otros Evolution, PCs que no uses).
+3. **Versión de WhatsApp Web** que usa Evolution. En `.env` de la raíz podés fijar `CONFIG_SESSION_PHONE_VERSION` (valor actual por defecto en `docker-compose.yml`). Si sigue fallando, actualizá el número desde [versiones WhatsApp Web (wppconnect)](https://wppconnect.io/whatsapp-versions/), guardá `.env` y recreá API: `docker compose up -d --force-recreate evolution-api`.
+4. **Logs del contenedor:** `docker logs bcp_evolution_api --tail 120` — buscá `Stream Errored`, `401`, `device_removed`, `515`, timeouts. Eso orienta si es versión, red o sesión inválida.
+5. **Redis/Postgres estables.** Si el contenedor de Evolution o Redis se reinicia seguido, la sesión se cae. `docker compose ps` y revisá reinicios en Docker Desktop.
+6. **Imagen más nueva (opcional).** `atendai/evolution-api:v2.1.1` es fija en el compose; en foros suelen recomendar subir de versión si hay bugs de Baileys (probalo solo si lo anterior no alcanza).
 
 ## Seguridad (MVP)
 

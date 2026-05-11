@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>RutaPe — Admin</title>
+  <title>RutaPe — Panel</title>
   <style>
     :root{
       --bg: #0c1117;
@@ -34,10 +34,11 @@
     }
     h1{
       margin:0;
-      font-size: 20px;
-      letter-spacing: -.02em;
+      font-size: 22px;
+      letter-spacing: -.03em;
       line-height: 1.15;
       text-wrap: balance;
+      font-weight: 750;
     }
     .sub{
       margin: 4px 0 0;
@@ -63,6 +64,27 @@
       outline: none;
     }
     .actions input:focus{ border-color: rgba(90,162,255,.55); box-shadow: 0 0 0 3px rgba(90,162,255,.18); }
+    .seed-bar{
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+      align-items:center;
+      margin: 0 0 14px;
+      padding: 12px 14px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: rgba(17,24,38,.35);
+    }
+    .seed-bar input{
+      background: rgba(12,17,23,.35);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      color: var(--text);
+      padding: 10px 12px;
+      outline: none;
+    }
+    .seed-bar input:focus{ border-color: rgba(90,162,255,.55); box-shadow: 0 0 0 3px rgba(90,162,255,.18); }
+    .seed-bar .pill{ font-size: 11px; max-width: 52ch; line-height: 1.35; }
     .btn{
       border: 1px solid rgba(90,162,255,.55);
       background: linear-gradient(180deg, rgba(90,162,255,.95), rgba(90,162,255,.72));
@@ -99,6 +121,38 @@
       border-radius: 14px;
       color: var(--muted);
       font-size: 13px;
+    }
+
+    .sync-panel{
+      margin: 0 0 14px;
+      padding: 12px 14px;
+      border: 1px solid var(--line);
+      background: rgba(17,24,38,.45);
+      border-radius: 14px;
+      display: none;
+    }
+    .sync-panel.active{ display: block; }
+    .sync-panel .row{
+      display:flex;
+      align-items:center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-top: 8px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .sync-panel progress{
+      width: 100%;
+      height: 10px;
+      border-radius: 999px;
+      overflow: hidden;
+      accent-color: var(--accent);
+    }
+    .sync-panel .phase{
+      font-size: 12px;
+      color: var(--text);
+      font-weight: 650;
     }
 
     .layout{
@@ -189,8 +243,8 @@
 <body>
   <header>
     <div>
-      <h1>RutaPe — panel admin</h1>
-      <p class="sub">Scraping, perfiles y oportunidades. Optimizado para revisar rápido qué hay nuevo y abrir links sin ruido.</p>
+      <h1>RutaPe</h1>
+      <p class="sub">Oportunidades recopiladas + conversaciones WhatsApp. Pensado para ver qué hay nuevo, abrir links y seguir el pulso del bot sin perder tiempo.</p>
     </div>
     <div class="actions">
       <input id="q" placeholder="Buscar para scraping (ej: python junior lima)" />
@@ -198,7 +252,18 @@
       <span class="pill" id="last-refresh"><strong>—</strong></span>
     </div>
   </header>
+  <div class="seed-bar">
+    <input id="seed-url" type="url" inputmode="url" placeholder="https://www.computrabajo.com/ o un listado pe.computrabajo.com/…" style="flex:1; min-width:260px;" />
+    <input id="seed-limit" type="number" min="1" max="300" value="100" title="Máximo de ofertas (1–300)" style="width:92px;" />
+    <button class="btn" id="btn-scrape-seed" type="button">Importar desde URL</button>
+    <span class="pill" id="seed-hint">Computrabajo: Scrapling + validación igual que «Actualizar». En la <strong>home</strong>, define la búsqueda arriba; si pegás un <strong>listado</strong>, se infiere la palabra del link.</span>
+  </div>
   <div id="status">Cargando…</div>
+  <div id="sync-panel" class="sync-panel" aria-live="polite">
+    <div class="phase" id="sync-phase">Sincronizando oportunidades…</div>
+    <progress id="sync-progress" max="100" value="0"></progress>
+    <div class="row" id="sync-detail">Esperando respuesta del servidor…</div>
+  </div>
   <div class="layout">
     <div class="panel">
       <div class="hd">
@@ -294,28 +359,144 @@
       const q = document.getElementById("q");
       const tag = document.getElementById("last-refresh");
       const st = document.getElementById("status");
+      const panel = document.getElementById("sync-panel");
+      const bar = document.getElementById("sync-progress");
+      const phase = document.getElementById("sync-phase");
+      const detail = document.getElementById("sync-detail");
       btn.disabled = true;
+      panel.classList.add("active");
+      bar.value = 0;
+      phase.textContent = "1/3 · Validación y scraping…";
+      detail.textContent = "Buscando fuentes públicas (puede tardar varios segundos).";
       const term = (q.value || "").trim() || "python";
+      let tick = 0;
+      const adv = setInterval(() => {
+        tick = Math.min(tick + 2, 88);
+        bar.value = tick;
+        if (tick > 22 && tick < 50) {
+          phase.textContent = "2/3 · Sincronizando base de datos…";
+          detail.textContent = "Comparando con oportunidades ya guardadas (altas, bajas, actualizaciones).";
+        } else if (tick >= 50) {
+          phase.textContent = "3/3 · Finalizando…";
+          detail.textContent = "Aplicando cambios y preparando el panel.";
+        }
+      }, 320);
       try {
-        st.textContent = "Ejecutando scraping… (" + term + ")";
-        const r = await fetch("/admin/api/refresh-opportunities" + qs + "&q=" + encodeURIComponent(term) + "&limit=60", {
+        st.textContent = "Sincronización en curso · término: “" + term + "”";
+        const refreshParams = new URLSearchParams({ q: term, limit: "60" });
+        if (T) refreshParams.set("token", T);
+        const r = await fetch("/admin/api/refresh-opportunities?" + refreshParams.toString(), {
           method: "POST",
         });
+        clearInterval(adv);
+        bar.value = 100;
         if (!r.ok) {
-          st.textContent = "Error scraping: " + r.status + " (¿token admin?)";
+          phase.textContent = "Error";
+          detail.textContent = "HTTP " + r.status + " — ¿token admin en ?token= o header?";
+          st.textContent = "Error al sincronizar oportunidades (" + r.status + ").";
+          tag.innerHTML = "<strong>Error</strong>";
           return;
         }
         const d = await r.json();
-        tag.innerHTML = "<strong>OK</strong> · fetched " + d.fetched + " · inserted " + d.inserted;
+        phase.textContent = "Listo";
+        const reasons = d.skip_reasons && Object.keys(d.skip_reasons).length
+          ? " · descartes: " + JSON.stringify(d.skip_reasons)
+          : "";
+        detail.textContent =
+          "Traídas: " + d.fetched + " · válidas: " + d.validated_ok
+          + " · nuevas: " + d.inserted + " · actualizadas: " + d.updated
+          + " · desactivadas (ya no listadas): " + d.deactivated
+          + " · reactivadas: " + (d.revived || 0)
+          + " · descartadas (validación): " + d.skipped_invalid
+          + reasons;
+        st.textContent =
+          "Última sync: " + d.validated_ok + " válidas de " + d.fetched + " traídas · "
+          + d.inserted + " nuevas · " + d.updated + " actualizadas · " + d.deactivated + " dadas de baja en scrape.";
+        tag.innerHTML = "<strong>OK</strong> · +" + d.inserted + " / ↻" + d.updated + " / −" + d.deactivated;
       } catch (e) {
+        clearInterval(adv);
+        phase.textContent = "Sin conexión";
+        detail.textContent = String(e && e.message ? e.message : e);
         tag.innerHTML = "<strong>Fallo</strong>";
+        st.textContent = "No se pudo contactar al servidor.";
       } finally {
+        clearInterval(adv);
         btn.disabled = false;
         await pull();
+        setTimeout(() => { panel.classList.remove("active"); bar.value = 0; }, 2800);
+      }
+    }
+
+    async function scrapeFromSeed() {
+      const btn = document.getElementById("btn-scrape-seed");
+      const seedUrl = (document.getElementById("seed-url").value || "").trim();
+      const limRaw = parseInt(String(document.getElementById("seed-limit").value || "100"), 10);
+      const lim = Math.min(300, Math.max(1, isNaN(limRaw) ? 100 : limRaw));
+      const q = document.getElementById("q");
+      const term = (q.value || "").trim() || "empleo";
+      const panel = document.getElementById("sync-panel");
+      const bar = document.getElementById("sync-progress");
+      const phase = document.getElementById("sync-phase");
+      const detail = document.getElementById("sync-detail");
+      const st = document.getElementById("status");
+      const tag = document.getElementById("last-refresh");
+      if (!seedUrl) {
+        st.textContent = "Pegá una URL (p. ej. computrabajo.com).";
+        return;
+      }
+      btn.disabled = true;
+      panel.classList.add("active");
+      bar.value = 5;
+      phase.textContent = "Importación por URL…";
+      detail.textContent = "Scrapling + merge en base (puede tardar).";
+      const adv = setInterval(() => { bar.value = Math.min(92, (bar.value || 0) + 3); }, 400);
+      try {
+        st.textContent = "Importando desde URL · límite " + lim + " · término: “" + term + "”";
+        const p = new URLSearchParams();
+        if (T) p.set("token", T);
+        const r = await fetch("/admin/api/scrape-seed?" + p.toString(), {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Accept": "application/json" },
+          body: JSON.stringify({ url: seedUrl, query: term, limit: lim }),
+        });
+        clearInterval(adv);
+        bar.value = 100;
+        if (!r.ok) {
+          phase.textContent = "Error";
+          let extra = "";
+          try {
+            const err = await r.json();
+            if (err.detail) extra = " — " + (typeof err.detail === "string" ? err.detail : JSON.stringify(err.detail));
+          } catch (_) {}
+          detail.textContent = "HTTP " + r.status + extra;
+          st.textContent = "Error importación (" + r.status + ").";
+          tag.innerHTML = "<strong>Error</strong>";
+          return;
+        }
+        const d = await r.json();
+        phase.textContent = "Listo";
+        detail.textContent =
+          "Traídas: " + d.fetched + " · válidas: " + d.validated_ok
+          + " · nuevas: " + d.inserted + " · actualizadas: " + d.updated
+          + " · desactivadas: " + d.deactivated;
+        st.textContent = "Import URL: " + d.inserted + " nuevas · " + d.updated + " actualizadas.";
+        tag.innerHTML = "<strong>URL OK</strong> · +" + d.inserted + " / ↻" + d.updated;
+      } catch (e) {
+        clearInterval(adv);
+        phase.textContent = "Sin conexión";
+        detail.textContent = String(e && e.message ? e.message : e);
+        tag.innerHTML = "<strong>Fallo</strong>";
+        st.textContent = "No se pudo contactar al servidor.";
+      } finally {
+        clearInterval(adv);
+        btn.disabled = false;
+        await pull();
+        setTimeout(() => { panel.classList.remove("active"); bar.value = 0; }, 2600);
       }
     }
 
     document.getElementById("btn-refresh").addEventListener("click", refreshOpps);
+    document.getElementById("btn-scrape-seed").addEventListener("click", scrapeFromSeed);
     document.getElementById("q").addEventListener("keydown", (e) => {
       if (e.key === "Enter") refreshOpps();
     });

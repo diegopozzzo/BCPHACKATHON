@@ -5,10 +5,9 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
-import httpx
-
 from app.config import Settings
 from app.evolution_client import evolution_remote_jid_from_key, evolution_webhook_entries
+from app.evolution_http import get_evolution_httpx
 
 logger = logging.getLogger(__name__)
 
@@ -101,15 +100,15 @@ async def get_media_base64(settings: Settings, payload: dict[str, Any]) -> tuple
     headers = {"apikey": settings.evolution_api_key, "Content-Type": "application/json"}
     body = {"message": doc.message_entry, "convertToMp4": False}
 
-    async with httpx.AsyncClient(timeout=120.0) as client:
-        r = await client.post(url, json=body, headers=headers)
-        if r.status_code >= 400:
-            logger.warning("getBase64FromMediaMessage %s: %s", r.status_code, r.text[:2000])
-            return None
-        try:
-            data = r.json()
-        except Exception:  # noqa: BLE001
-            return None
+    client = await get_evolution_httpx()
+    r = await client.post(url, json=body, headers=headers)
+    if r.status_code >= 400:
+        logger.warning("getBase64FromMediaMessage %s: %s", r.status_code, r.text[:2000])
+        return None
+    try:
+        data = r.json()
+    except Exception:  # noqa: BLE001
+        return None
 
     # Best-effort parsing: different deployments wrap data differently.
     b64 = None

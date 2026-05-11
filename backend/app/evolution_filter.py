@@ -1,11 +1,12 @@
 """
 Filtro de mensajes Evolution alineado a NEKOBOT (packages/providers/src/evolution-api/normalizer.ts):
 
-- *self chat*: `wa_digits(remoteJid) == wa_digits(payload["sender"])`
-- `EVOLUTION_SELF_CHAT_MODE`:
-  - `only`: solo conversaciones contigo mismo (Mensajes contigo).
-  - `allow`: acepta chats normales + contigo; `fromMe` solo si es self-chat.
-  - `disabled`: nunca procesa `fromMe` (comportamiento WhatsApp clásico).
+- *self chat* (Mensajes contigo): mismo número en `remoteJid` y `sender`, o un solo JID en lista blanca.
+- **Regla dura:** solo se procesan mensajes de ese chat contigo; **nunca** chats 1:1 con terceros
+  (ni que les escribas ni que te escriban), aunque el contacto esté en lista blanca.
+- `EVOLUTION_SELF_CHAT_MODE` solo afecta `fromMe` (eco / “mensajes contigo” salientes):
+  - `only` / `allow`: en self-chat se procesan tus mensajes salientes (salvo eco del bot).
+  - `disabled`: no se procesa `fromMe` (solo entrantes “como si fuera otro dispositivo”, si los hubiera).
 - Eco del bot: IDs devueltos por `sendText` se ignoran si llegan de nuevo con `fromMe`.
 """
 
@@ -16,8 +17,8 @@ import re
 from typing import Any, Literal
 
 from app.config import Settings
-from app.evolution_client import is_recent_bot_message_id
-from app.whatsapp_jid import is_dm_allowed
+from app.evolution_client import is_bot_outbound_text_echo, is_recent_bot_message_id
+from app.whatsapp_jid import _first_remote_jid_alt_from_payload, is_dm_allowed, same_dm_contact
 
 logger = logging.getLogger(__name__)
 
@@ -52,14 +53,39 @@ def evolution_is_self_chat(payload: dict[str, Any], remote_jid: str | None, sett
     NEKOBOT: `wa_digits(remoteJid) == wa_digits(payload['sender'])`.
     Si Evolution no manda `sender`, y solo hay un JID en lista blanca, se asume self-chat
     cuando el chat es ese número (Mensajes contigo).
+
+    Además: con un solo número permitido (típico EVOLUTION_MY_PHONE), el chat contigo mismo
+    es `same_dm_contact(remote, ese JID)` aunque `sender` venga vacío o distinto.
+    Si el chat es `@lid`, hace falta `remoteJidAlt` (PN del hilo) igual a tu número *y* `sender`
+    coherente; no basta `sender` solo (Evolution lo repite en otros DMs).
     """
     u = _digits(remote_jid)
     s = _digits(_payload_sender_raw(payload))
-    if u and s and u == s:
-        return True
+    # En un chat 1:1 con un tercero, remote y sender suelen compartir los mismos dígitos (él/ella).
+    # Solo tratamos u==s como self-chat cuando esos dígitos son *tu* número en lista blanca única.
+    if u and s and u == s and len(settings.allowed_jid_set) == 1:
+        only_jid = next(iter(settings.allowed_jid_set))
+        if u == _digits(only_jid):
+            return True
     if not s and u and len(settings.allowed_jid_set) == 1:
         only_jid = next(iter(settings.allowed_jid_set))
         if _digits(only_jid) == u:
+            return True
+    if len(settings.allowed_jid_set) == 1 and remote_jid:
+        only_jid = next(iter(settings.allowed_jid_set))
+        if same_dm_contact(remote_jid, only_jid):
+            return True
+        # @lid: NO basta con que `sender` sea tu número (Evolution lo manda en muchos chats).
+        # Hace falta que el PN del chat (`remoteJidAlt`) sea el tuyo → típico "Mensajes contigo".
+        sr = _payload_sender_raw(payload)
+        alt = _first_remote_jid_alt_from_payload(payload)
+        if (
+            remote_jid.rstrip().lower().endswith("@lid")
+            and alt
+            and same_dm_contact(alt, only_jid)
+            and sr
+            and same_dm_contact(sr, only_jid)
+        ):
             return True
     return False
 
@@ -89,19 +115,21 @@ def evolution_should_process_message(
     if not allowed:
         return False, "lista_blanca_vacía"
 
-    if not is_dm_allowed(remote_jid, allowed):
+    if not is_dm_allowed(remote_jid, allowed, sender_jid=_payload_sender_raw(payload)):
         return False, "jid_no_permitido_o_grupo"
 
-    mode = _effective_self_chat_mode(settings)
-
     is_self = evolution_is_self_chat(payload, remote_jid, settings)
+    if not is_self:
+        return False, "solo_mensajes_contigo"
 
-    if mode == "only" and not is_self:
-        return False, "solo_chat_contigo_modo_only"
+    mode = _effective_self_chat_mode(settings)
 
     if from_me:
         if is_recent_bot_message_id(stanza_id):
             return False, "eco_bot_por_id"
+        # Self-chat: a veces el id del webhook no coincide con el de sendText; el cuerpo sí.
+        if is_self and is_bot_outbound_text_echo(remote_jid, text):
+            return False, "eco_bot_por_texto"
         if not (mode != "disabled" and is_self):
             return False, "fromMe_fuera_de_self_chat_o_modo_disabled"
 

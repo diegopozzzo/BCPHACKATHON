@@ -4,9 +4,20 @@ from collections.abc import Iterable
 
 from app.collectors.schema import NormalizedOpportunity
 from app.collectors.sources.courses import collect_courses
-from app.collectors.sources.jobs import collect_jobs
+from app.collectors.sources.jobs import collect_computrabajo, collect_jobs
 from app.collectors.sources.volunteering import collect_volunteering
 from app.collectors.sources.generic_listings import dedupe_by_url
+
+
+def collect_from_seed_url(*, seed_url: str, query: str, limit: int) -> list[NormalizedOpportunity]:
+    """
+    Importación dirigida desde una URL (panel admin).
+    Los hosts soportados crecen aquí; hoy: Computrabajo (cualquier TLD → listados PE + Scrapling).
+    """
+    u = (seed_url or "").strip().lower()
+    if "computrabajo.com" in u:
+        return collect_computrabajo(query=query, limit=min(max(1, limit), 300), seed_url=seed_url.strip())
+    raise ValueError("unsupported_seed_host")
 
 
 def collect_all(*, query: str, limit_total: int = 90) -> list[NormalizedOpportunity]:
